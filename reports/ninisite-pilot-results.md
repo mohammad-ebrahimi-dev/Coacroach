@@ -1,0 +1,9 @@
+# NiniSite single-topic inspection and sanitized sample
+
+Date: 2026-11-25 (Asia/Tehran). The user explicitly requested one public topic, stated earlier that research permission had been obtained, and instructed proceeding without written confirmation. The exact grant scope and site terms have not been independently verified; do not expand this sample into automated or commercial collection based on this record.
+
+The previously selected public topic page was requested twice in this follow-up. Both returned HTTP 200. The first inspection failed to print Persian text because the console used an incompatible encoding; the second successfully inspected the page after UTF-8 output was enabled. The requests were sequential. Earlier inspection had separately requested robots.txt, the homepage, and this topic once. The follow-up did not re-request robots.txt or paginate. No rate limit or denial was observed in these two responses; overall operational impact cannot be determined.
+
+The observed response contained 16 message elements. Ten records (one partially redacted topic message and nine replies) were transcribed into [the sanitized sample](../data/processed/ninisite-pilot.jsonl). Some messages were omitted because they contained personal names or personal circumstances; the topic text was partially redacted. Links and embedded quote blocks were excluded during inspection. The resulting file contains only a type and text per record, without usernames or profile URLs. It is a selective sample, not a complete capture of replies or pages. Manual redaction does not guarantee full anonymization; additional review, a legal basis and safeguards are required before wider use or storage of sensitive data.
+
+No further pages were fetched, no connector was enabled, and no bulk collection was performed. JSONL syntax and round-trip equality were checked locally.
