@@ -23,10 +23,10 @@ def check_ninisite_pilot_permission(pilot):
 
 
 def check_ninisite_continuous_permission(collector):
-    """Permit only the user-requested filtered first-page collector."""
+    """Permit only the user-requested filtered discussion collector."""
     from .ninisite_continuous import ContinuousNiniSiteCollector
     if (type(collector) is not ContinuousNiniSiteCollector
-            or collector.permission_status != 'User-authorized filtered first-page'):
+            or collector.permission_status != 'User-authorized filtered discussions'):
         raise PermissionError('Source is not approved')
 
 

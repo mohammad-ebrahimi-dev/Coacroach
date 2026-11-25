@@ -1,0 +1,7 @@
+{"record_id":"home","synthetic":true,"source":"fixture","source_url":"https://fixture.example/","content_type":"HomepageMetadata","text":"Synthetic homepage title"}
+{"record_id":"marketing","synthetic":true,"source":"fixture","source_url":"https://fixture.example/about","content_type":"MarketingContent","text":"Synthetic marketing slogan"}
+{"record_id":"navigation","synthetic":true,"source":"fixture","source_url":"https://fixture.example/menu","content_type":"NavigationContent","text":"Synthetic navigation label"}
+{"record_id":"empty","synthetic":true,"source":"fixture","source_url":"https://fixture.example/empty","content_type":"ProjectDescription","text":""}
+{"record_id":"request","synthetic":true,"source":"parscoders-synthetic","source_url":"https://fixture.example/project/synthetic-1","content_type":"ProjectDescription","text":"Synthetic request: build a scheduling tool for a small workshop; budget 100 units."}
+{"record_id":"duplicate","synthetic":true,"source":"parscoders-synthetic","source_url":"https://fixture.example/project/synthetic-2","content_type":"ProjectDescription","text":"Synthetic request: build a scheduling tool for a small workshop; budget 100 units."}
+{"record_id":"ambiguous","synthetic":true,"source":"fixture","source_url":"https://fixture.example/topic/synthetic","content_type":"Other","text":"Synthetic statement: scheduling is difficult."}

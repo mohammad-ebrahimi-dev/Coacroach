@@ -32,7 +32,7 @@ def test_continuous_monitor_saves_filtered_text_and_pauses(tmp_path):
     collector = ContinuousNiniSiteCollector(state, monitor_factory=FakeMonitor, cycle_wait=60)
     assert collector.start()
     for _ in range(200):
-        files = list((tmp_path / 'processed' / 'topic').glob('P*/*.jsonl'))
+        files = list((tmp_path / 'processed' / 'ninisite').glob('P*/*.jsonl'))
         if files:
             try:
                 json.loads(files[0].read_text(encoding='utf-8').splitlines()[0])
@@ -53,7 +53,7 @@ def test_continuous_monitor_saves_filtered_text_and_pauses(tmp_path):
     count = len(calls)
     time.sleep(.02)
     assert len(calls) == count
-    output = list((tmp_path / 'processed' / 'topic').glob('P*/*.jsonl'))
+    output = list((tmp_path / 'processed' / 'ninisite').glob('P*/*.jsonl'))
     assert len(output) == 1
     content = output[0].read_text(encoding='utf-8')
     assert 'نام‌کاربری' not in content and 'بارداری' not in content
@@ -78,10 +78,10 @@ def test_permission_guard_rejects_unknown_status(tmp_path):
 
 def test_numbered_topic_groups_preserve_existing_files(tmp_path):
     from market_tool.ninisite_pilot import save_numbered_topic
-    folder = tmp_path / 'processed' / 'topic'
+    folder = tmp_path / 'processed' / 'ninisite'
     folder.mkdir(parents=True)
     (folder / '1.jsonl').write_text('old', encoding='utf-8')
-    paths = [save_numbered_topic(tmp_path, [{'text': 'نمونه'}]) for _ in range(61)]
+    paths = [save_numbered_topic(tmp_path, [{'text': 'نمونه'}], source='ninisite') for _ in range(61)]
     assert len(list((folder / 'P1').glob('*.jsonl'))) == 60
     assert len(list((folder / 'P2').glob('*.jsonl'))) == 1
     assert paths[0].name == '2.jsonl' and paths[-1].name == '62.jsonl'
@@ -106,3 +106,55 @@ def test_connection_recovery_waits_and_reuses_monitor(tmp_path, monkeypatch):
     collector._supervise(monitor)
     assert calls == ['run', 'run', 'close'] and waits == [60]
     assert not state.attached
+
+
+def test_existing_ids_are_found_across_source_directories(tmp_path):
+    folder=tmp_path/'processed'/'ninisite'/'P1';folder.mkdir(parents=True)
+    (folder/'1.jsonl').write_text(json.dumps({'kind':'topic_first_page','topic_id':'123'})+'\n',encoding='utf-8')
+    collector=ContinuousNiniSiteCollector(DashboardState(tmp_path))
+    assert '123' in collector._existing_ids()
+
+
+def test_short_username_is_redacted_without_removing_message():
+    from market_tool.text_safety import clean_message
+    assert clean_message('hello ab and abstract',['ab']) == 'hello [redacted] and abstract'
+
+
+def test_sensitive_keyword_as_username_is_redacted_before_filtering():
+    from market_tool.text_safety import clean_message
+    name='\u067e\u0632\u0634\u06a9'
+    assert clean_message('hello '+name,[name]) == 'hello [redacted]'
+    assert clean_message('hello '+name,[]) is None
+
+
+def test_dashboard_worker_collects_observed_next_page(tmp_path):
+    state=DashboardState(tmp_path)
+    calls=[]
+    class FakeMonitor:
+        delay_seconds=10
+        stop_reason=None
+        def get(self,url,*,before_request):
+            before_request(); calls.append(url)
+            request=httpx.Request('GET',url)
+            if url.endswith('/robots.txt'):
+                return httpx.Response(200,headers={'content-type':'text/plain'},text='User-agent: *\nAllow: /',request=request)
+            if url.endswith('/discussion'):
+                return httpx.Response(200,headers={'content-type':'text/html'},text='<a href="/discussion/topic/987/test">topic</a>',request=request)
+            if url.endswith('?page=2'):
+                return httpx.Response(200,headers={'content-type':'text/html; charset=utf-8'},text='<h1>Synthetic topic</h1><div class="post-message topic-post__message">Synthetic reply</div>',request=request)
+            return httpx.Response(200,headers={'content-type':'text/html; charset=utf-8'},text='<h1>Synthetic topic</h1><div class="post-message topic-post__message">Synthetic post</div><div class="pagination-box"><a href="?page=2">2</a></div>',request=request)
+        def close(self): pass
+    collector=ContinuousNiniSiteCollector(state,monitor_factory=FakeMonitor,cycle_wait=60)
+    assert collector.start()
+    for _ in range(200):
+        if state.counts['messages_saved']==2: break
+        time.sleep(.01)
+    assert state.counts['messages_saved']==2
+    files=list((tmp_path/'processed'/'ninisite'/'P1').glob('*.jsonl'))
+    assert len(files)==2
+    assert any(json.loads(p.read_text(encoding='utf-8').splitlines()[0])['kind']=='topic_additional_page' for p in files)
+    assert len(calls)==4 and calls[-1].endswith('?page=2')
+    assert state.stop()
+    for _ in range(200):
+        if not state.attached: break
+        time.sleep(.005)

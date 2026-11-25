@@ -16,9 +16,11 @@ REVIEWED = frozenset({
 })
 
 
-def save_numbered_topic(output_root, records):
+def save_numbered_topic(output_root, records, *, source='topic'):
     """Create the first available numbered JSONL without replacing any file."""
-    folder = output_root / 'processed' / 'topic'
+    if source not in ('topic', 'ninisite'):
+        raise ValueError('unsupported source')
+    folder = output_root / 'processed' / source
     folder.mkdir(parents=True, exist_ok=True)
     used = {int(path.stem) for path in folder.glob('*.jsonl') if path.stem.isdigit()}
     for group in folder.glob('P*'):

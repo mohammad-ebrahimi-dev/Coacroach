@@ -13,12 +13,14 @@ def clean_message(text, author_names=()):
     Names and sensitive disclosures cannot be detected reliably by regex.
     The result requires human privacy review before broader reuse.
     """
-    if not isinstance(text, str) or not text.strip() or SENSITIVE.search(text):
+    if not isinstance(text, str) or not text.strip():
         return None
     cleaned = EMAIL.sub('[redacted]', text)
     cleaned = PHONE.sub('[redacted]', cleaned)
     cleaned = HANDLE.sub('[redacted]', cleaned)
     for name in author_names:
-        if len(name) >= 3:
-            cleaned = cleaned.replace(name, '[redacted]')
+        if len(name) >= 2:
+            cleaned = re.sub(r'(?<!\w)' + re.escape(name) + r'(?!\w)', '[redacted]', cleaned)
+    if SENSITIVE.search(cleaned):
+        return None
     return cleaned.strip() or None

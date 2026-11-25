@@ -26,10 +26,11 @@ const state = {
   last_request:null, safety:{state:'ready',delay_s:12}, controls:{pause:true,resume:false},
   size:{raw_bytes:0,processed_bytes:123,total_bytes:123}, events:[], timeline:[],
 };
-let fail = false, interval, posts = [];
+let fail = false, interval, posts = [], gets = [];
 async function fetch(url, options) {
   if (fail) throw Error('offline');
   if (options && options.method === 'POST') { posts.push({url, options}); return {ok:true}; }
+  if (url.startsWith('/api/records')) { gets.push(url); return {ok:true, json:async () => ({counts:{posts:1,replies:0,duplicates:0,rejected:null},latest:null,records:[{source:'synthetic',kind:'post',text:'synthetic content'}],has_more:true})}; }
   return {ok:true, json:async () => state};
 }
 const context = {document, fetch, setInterval: fn => {interval=fn;}, Date, Number, Math, String};
@@ -38,8 +39,13 @@ async function tick() { await new Promise(resolve => setImmediate(resolve)); }
 (async () => {
   await tick();
   assert.equal(nodes.get('#demo').style.display, 'block');
-  assert.equal(nodes.get('#cards').children.length, 11);
-  assert.equal(nodes.get('#charts').children.length, 4);
+  assert.equal(nodes.get('#cards').children.length, 7);
+  assert.equal(nodes.get('#charts').children.length, 3);
+  assert.equal(nodes.get('#dataset-records').children.length, 1);
+  assert.equal(nodes.get('#dataset-records').children[0].children[1].textContent, 'synthetic content');
+  await nodes.get('#records-next').listeners.click();
+  await tick();
+  assert.ok(gets.includes('/api/records?offset=25'));
   assert.equal(nodes.get('#pause').disabled, false);
   await nodes.get('#pause').listeners.click();
   await tick();

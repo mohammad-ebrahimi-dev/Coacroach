@@ -6,8 +6,10 @@ from pathlib import Path
 import secrets
 import threading
 import time
+from urllib.parse import urlsplit, parse_qs
 
 from market_tool.dashboard_state import DashboardState
+from market_tool.local_dataset import local_records
 from market_tool.ninisite_continuous import ContinuousNiniSiteCollector
 
 PAGE = Path(__file__).parent / 'dashboard' / 'index.html'
@@ -40,6 +42,17 @@ def make_server(port=8765, *, state=None):
             if self.path == '/':
                 body = PAGE.read_text(encoding='utf-8').replace('__TOKEN__', token).encode('utf-8')
                 return self.send_data(200, body, 'text/html; charset=utf-8')
+            if urlsplit(self.path).path == '/api/records':
+                if not secrets.compare_digest(self.headers.get('X-Dashboard-Token', ''), token):
+                    return self.send_data(403, b'Forbidden', 'text/plain')
+                params = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if set(params) - {'offset'} or len(params.get('offset', ['0'])) != 1:
+                    return self.send_data(400, b'Invalid page', 'text/plain')
+                offset = params.get('offset', ['0'])[0]
+                if not offset.isascii() or not offset.isdigit() or len(offset) > 7:
+                    return self.send_data(400, b'Invalid page', 'text/plain')
+                data = local_records(state.root, offset=int(offset)) if not state.demo else {'counts': {}, 'latest': None, 'records': [], 'has_more': False}
+                return self.send_data(200, json.dumps(data, ensure_ascii=False).encode('utf-8'), 'application/json; charset=utf-8')
             if self.path == '/api/state':
                 snapshot = state.snapshot()
                 snapshot['controls']['start'] = not state.demo and not state.attached and pilot.permitted()

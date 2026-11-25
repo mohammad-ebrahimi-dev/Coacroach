@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, ConfigDict, Field
 
 from .load_safety_monitor import LoadSafetyMonitor
+from .dedup_index import scan, compare_topic, text_key, url_key
 from .ninisite_pilot import save_numbered_topic
 from .persian_html import parse_topic
 from .text_safety import clean_message
@@ -56,7 +57,7 @@ class ContinuousNiniSiteCollector:
     Author fields, URL slugs and raw HTML are not stored or logged. Automated
     filtering cannot guarantee that names or sensitive content are absent.
     """
-    permission_status = 'User-authorized filtered first-page'
+    permission_status = 'User-authorized filtered discussions'
 
     def __init__(self, state, monitor_factory=None, cycle_wait=60):
         self.state = state
@@ -89,19 +90,10 @@ class ContinuousNiniSiteCollector:
             return True
 
     def _existing_ids(self):
-        seen = set()
-        folder = self.state.root / 'processed' / 'topic'
-        if not folder.exists():
-            return seen
-        for path in list(folder.glob('*.jsonl')) + list(folder.glob('P[0-9]*/*.jsonl')):
-            try:
-                with path.open(encoding='utf-8') as file:
-                    row = json.loads(file.readline())
-                if row.get('kind') == 'topic_first_page' and str(row.get('topic_id', '')).isdigit():
-                    seen.add(str(row['topic_id']))
-            except (OSError, ValueError, AttributeError):
-                continue
-        return seen
+        index = scan(self.state.root)
+        if index['counts'].get('invalid_lines', 0) or index['counts'].get('unreadable_files', 0):
+            raise ValueError('incomplete_dedup_index')
+        return set(index['ninisite_topic_ids'])
 
     def _gone_urls(self):
         if self._gone is None:
@@ -180,7 +172,10 @@ class ContinuousNiniSiteCollector:
 
             policy = read_policy()
             policy_checked = time.monotonic()
-            seen = self._existing_ids()
+            index = scan(self.state.root)
+            if index['counts'].get('invalid_lines', 0) or index['counts'].get('unreadable_files', 0):
+                raise ValueError('incomplete_dedup_index')
+            seen = set(index['ninisite_topic_ids'])
             while self.state.checkpoint():
                 if time.monotonic() - policy_checked >= 3600:
                     policy = read_policy()
@@ -213,6 +208,10 @@ class ContinuousNiniSiteCollector:
                     if 'html' not in response.headers.get('content-type', '').lower():
                         raise ValueError('unexpected_content')
                     title, messages = parse_topic(response)
+                    decision, _ = compare_topic(index, topic_id, url, title, messages[0])
+                    if decision != 'new_unique_topic':
+                        seen.add(topic_id)
+                        continue
                     content_type = Message()
                     content_type['content-type'] = response.headers.get('content-type', '')
                     charset = content_type.get_content_charset()
@@ -231,13 +230,45 @@ class ContinuousNiniSiteCollector:
                     if title:
                         header['title'] = title
                     records = [header]
-                    for index, text in enumerate(messages):
+                    for message_index, text in enumerate(messages):
                         cleaned = clean_message(text, author_names)
                         if cleaned:
-                            records.append({'kind': 'post' if index == 0 else 'reply', 'text': cleaned})
-                    save_numbered_topic(self.state.root, records)
+                            records.append({'kind': 'post' if message_index == 0 else 'reply', 'text': cleaned})
+                    save_numbered_topic(self.state.root, records, source='ninisite')
+                    index['ninisite_topic_ids'].append(topic_id)
+                    index['url_sha256'].append(url_key(url))
+                    index['title_sha256'].append(text_key(title))
+                    index['content_sha256'].append(text_key(messages[0]))
+                    for record in records[1:]:
+                        index['content_sha256'].append(text_key(record['text']))
                     self.state.count(messages_saved=len(records)-1)
                     seen.add(topic_id)
+                    # Follow only continuation links actually present on this page.
+                    from .ninisite_pagination import collect_pages, page_link
+                    seeds, page_numbers = [], set()
+                    for anchor in soup.select('.pagination-box a[href]'):
+                        parsed = page_link(url, anchor.get('href'))
+                        if parsed and parsed[1] not in page_numbers:
+                            seeds.append({'topic_id':topic_id, 'url':parsed[0]})
+                            page_numbers.add(parsed[1])
+                    if seeds:
+                        state = self.state
+                        class StateMonitor:
+                            delay_seconds = monitor.delay_seconds
+                            @property
+                            def stop_reason(self):
+                                return monitor.stop_reason
+                            def get(self, target):
+                                return state.monitored_get(target)
+                        hashes = set(index['content_sha256'])
+                        outcome = collect_pages(seeds, {topic_id:url}, hashes, StateMonitor(),
+                                                self.state.root / 'processed' / 'ninisite' / 'P1',
+                                                collector=self, policy=policy)
+                        index['content_sha256'] = list(hashes)
+                        self.state.count(pages=len(outcome['pages']), messages_identified=outcome['received'],
+                                         messages_saved=outcome['new'])
+                        if outcome['stop_reason']:
+                            raise ValueError('continuation_stopped')
                 # New topics may appear later. Sleep without an HTTP request and
                 # keep pause/end responsive via the shared condition.
                 if not self.state.wait_for_next_cycle(self.cycle_wait):

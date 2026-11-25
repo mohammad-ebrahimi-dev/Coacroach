@@ -123,6 +123,12 @@ def test_http_loopback_and_control_security(tmp_path):
         html = resp.read().decode('utf-8')
         token = re.search(r'name="dashboard-token" content="([^"]+)"', html).group(1)
         assert resp.status == 200 and token != '__TOKEN__'
+        conn.request('GET', '/api/records')
+        resp = conn.getresponse(); resp.read()
+        assert resp.status == 403
+        conn.request('GET', '/api/records', headers={'X-Dashboard-Token': token})
+        resp = conn.getresponse(); stored = json.loads(resp.read())
+        assert resp.status == 200 and stored['records'] == []
         with LoadSafetyMonitor(transport=httpx.MockTransport(lambda req: httpx.Response(200))) as monitor:
             state.attach(monitor, lambda: True)
             conn.request('POST', '/api/pause', headers={'Origin': f'http://127.0.0.1:{port}', 'X-Dashboard-Token': token})
@@ -149,7 +155,7 @@ def test_dashboard_frontend_is_single_page_and_polling():
     assert "setInterval(poll,3000)" in html
     assert 'Disconnected' in html
     assert '/api/start' not in html
-    assert 'messages_identified' in html and 'messages_saved' in html
+    assert 'messages_identified' in html and 'c.messages_saved' not in html
 
 
 def test_status_categories_and_response_statistics(tmp_path, monkeypatch):
@@ -190,3 +196,44 @@ def test_gone_url_persists_and_is_not_requested_again(tmp_path):
         ContinuousNiniSiteCollector(state)._request(url)
     assert calls == [url]
     assert 'private-name' not in (tmp_path / 'gone-url-sha256.txt').read_text()
+
+
+def test_local_dataset_reports_saved_records_without_internal_paths(tmp_path):
+    from market_tool.local_dataset import local_records
+    folder = tmp_path / 'processed' / 'ninisite' / 'P1'
+    folder.mkdir(parents=True)
+    entries = [{'kind':'topic_first_page','retrieved_at':'2026-11-25T00:00:00+00:00','source_url':'https://private.example/path?token=secret'},
+               {'kind':'post','text':'Hello test@example.com'},
+               {'kind':'reply','text':'Another message'},
+               {'kind':'reply','text':'Another message'}]
+    (folder/'1.jsonl').write_text(''.join(json.dumps(e)+'\n' for e in entries),encoding='utf-8')
+    data = local_records(tmp_path)
+    assert data['counts']=={'sources_with_records':1,'posts':1,'replies':1,'duplicates':1,'rejected':None}
+    assert data['latest']=='2026-11-25T00:00:00+00:00'
+    serialized=json.dumps(data)
+    assert 'test@example.com' not in serialized and 'secret' not in serialized
+    assert 'private.example' not in serialized and str(tmp_path) not in serialized
+    assert '[redacted]' in serialized
+
+
+def test_latest_batch_metrics_are_read_without_leaking_files(tmp_path):
+    from market_tool.local_dataset import local_records
+    folder=tmp_path/'processed'/'phase-12'; folder.mkdir(parents=True)
+    (folder/'continuation-result.json').write_text(json.dumps({'new':78,'duplicates':11,'rejected':3,'private_path':'sensitive'}),encoding='utf-8')
+    data=local_records(tmp_path)
+    assert data['last_batch']=={'new':78,'duplicates':11,'rejected':3}
+    assert 'sensitive' not in json.dumps(data)
+
+
+def test_local_records_supports_pagination_without_losing_long_text(tmp_path):
+    from market_tool.local_dataset import local_records
+    folder=tmp_path/'processed'/'ninisite'/'P1';folder.mkdir(parents=True)
+    records=[{'kind':'post','text':f'synthetic item {i}'} for i in range(26)]
+    records.append({'kind':'reply','text':'x'*6000})
+    (folder/'1.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in records),encoding='utf-8')
+    first=local_records(tmp_path)
+    second=local_records(tmp_path,offset=25)
+    assert len(first['records'])==25 and first['has_more']
+    assert len(second['records'])==2 and not second['has_more']
+    assert len(second['records'][-1]['text'])==6000
+    assert first['counts']['posts']==26 and second['counts']['replies']==1

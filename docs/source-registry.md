@@ -106,3 +106,27 @@ These selections are scope preferences, not evidence of API access, permission, 
 ### Direct connectivity check — 2026-11-25
 
 The user stated they have permission for access without the API. A single direct, TLS-verified Python httpx request to `https://www.reddit.com/r/Entrepreneur/` using the existing research user-agent returned HTTP 403 (HTML). A separately viewed web page was visible, but that does not establish that the project's direct automated requests are permitted. In accordance with the existing safety requirements, 403 is a stop condition: no retry, alternate client, proxy route, or access-control workaround was attempted. The collector and alternating scheduling remain disabled. The reported permission's scope has not been independently verified. An authorized access route or removal of the restriction by Reddit is needed before implementation can be validated.
+
+## Candidate Persian sites checked for public content (2026-11-25)
+
+The user requested additional sources resembling NiniSite. These are candidates, not enabled connectors: permission, robots rules, privacy handling, and extraction structure are not yet verified for each site. Prior homepage HTTP 200 checks did not establish permission to collect content.
+
+- [ParsCoders project listings](https://parscoders.com/project): public project titles and descriptions were visible in a web inspection; some projects are private and must not be accessed. Descriptions may include identifiers. This is a project marketplace, not a discussion forum.
+- [Ponisha](https://ponisha.ir/): the homepage shows recent project listings; project detail access and permission remain unverified. This is a marketplace, not a discussion forum.
+- [Karlancer](https://www.karlancer.com/): the homepage describes projects and services; public detail content and permission remain unverified.
+- [Tebyan](https://www.tebyan.net/): family and lifestyle editorial categories were visible; a public discussion forum and permitted extraction route were not established.
+- [Goftino](https://www.goftino.com/): customer chat service, not an identified public discussion source; private customer conversations are out of scope.
+- [AnjamMidam](https://anjammidam.com/), [TypeIran](https://typeiran.com/), and [Suntype](https://suntype.ir/): service sites; public forum-like discussions and permitted extraction were not established.
+
+No new connector or source scheduler was enabled. Next inspect each candidate's rules and source-specific public HTML with the existing conservative safety controls, and implement only after permissions and privacy requirements are established.
+
+Robots checks with Python requests, 2026-11-25: ParsCoders HTTP 200 excludes `/conversation/`, `/dashboard/`, `/api/`, and other paths; `/project` was not listed as disallowed in the retrieved wildcard group. Karlancer HTTP 200 excludes `/panel/`, `/api*` and other paths. Tebyan HTTP 200 excludes `/print/` in its wildcard group. Ponisha returned HTTP 404 for robots.txt. Robots directives are not a license to collect or reuse content; site terms and individual public pages still need review. No forum-style source was verified and none was enabled.
+
+
+## Current source discovery assessment (2026-11-25)
+
+The current source-specific access status, research value, page evidence, and next action for all 17 registered sources are in the [source discovery report](source-discovery-report.md) and [structured source metadata](../data/source-discovery.json). This assessment supersedes older contradictory phase-specific status statements below; user-reported permissions are recorded as such. Prior samples and forum collector output are not market-signal records. No collection is authorized solely by a successful HTTP response.
+
+### Phase 12 bounded execution
+
+The user reported owner research permission and requested a bounded NiniSite continuation run. The observed permitted pagination links produced 78 locally stored, filtered reply blocks; broader reuse rights, perfect anonymization, and completeness remain unverified. Four further topics were deferred by filtering. ParsCoders remains disabled until its collection and reuse scope is established; [official contact](https://parscoders.com/support/contact) can be used to clarify the scope. World Bank's existing single-indicator authorization remains separate from user-text sources. See [the execution report](../reports/phase-12-collection.md).

@@ -1,5 +1,6 @@
 import argparse
 import logging
+import json
 from pathlib import Path
 from pydantic import ValidationError
 from market_tool.config import Settings
@@ -14,7 +15,23 @@ def main():
     commands.add_parser('test-connection')
     fetch = commands.add_parser('fetch')
     fetch.add_argument('source', choices=['world-bank-female-labor-force'])
+    process = commands.add_parser('process-signals', help='Classify a local JSONL file without network access')
+    process.add_argument('input', type=Path)
+    process.add_argument('output_dir', type=Path, help='A new directory for classified outputs')
+    process.add_argument('--reviews', type=Path, help='Local JSON mapping of reviewed record IDs to true')
     args = parser.parse_args()
+    if args.command == 'process-signals':
+        from market_tool.market_signal_pipeline import process_file
+        try:
+            reviews = json.loads(args.reviews.read_text(encoding='utf-8-sig')) if args.reviews else {}
+            if not isinstance(reviews, dict) or any(not isinstance(k, str) or type(v) is not bool for k, v in reviews.items()):
+                raise ValueError('Invalid reviews')
+            result = process_file(args.input, args.output_dir, [k for k, v in reviews.items() if v])
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        except (OSError, ValueError, TypeError):
+            print('Offline processing failed; check input, reviews and ensure output directory does not exist.')
+            return 1
     try:
         settings = Settings.load()
     except (ValidationError, ValueError):
